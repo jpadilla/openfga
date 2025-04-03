@@ -18,6 +18,7 @@ import (
 	openfgaErrors "github.com/openfga/openfga/internal/errors"
 	serverconfig "github.com/openfga/openfga/internal/server/config"
 	"github.com/openfga/openfga/internal/validation"
+	"github.com/openfga/openfga/pkg/graph"
 	"github.com/openfga/openfga/pkg/logger"
 	"github.com/openfga/openfga/pkg/storage"
 	"github.com/openfga/openfga/pkg/telemetry"
@@ -1170,7 +1171,7 @@ func (c *LocalChecker) checkDirect(parentctx context.Context, req *ResolveCheckR
 			isUserset := tuple.IsObjectRelation(reqTupleKey.GetUser())
 			userType := tuple.GetType(reqTupleKey.GetUser())
 
-			if c.optimizationsEnabled && !isUserset {
+			if c.shouldOptimize(ctx) && !isUserset {
 				if typesys.UsersetCanFastPathWeight2(objectType, relation, userType, directlyRelatedUsersetTypes) {
 					resolver = c.checkUsersetFastPathV2
 					span.SetAttributes(attribute.String("resolver", "fastpathv2"))
@@ -1410,7 +1411,7 @@ func (c *LocalChecker) checkTTU(parentctx context.Context, req *ResolveCheckRequ
 		// will look up the objects associated with user.
 		isUserset := tuple.IsObjectRelation(tk.GetUser())
 
-		if c.optimizationsEnabled && !isUserset {
+		if c.shouldOptimize(ctx) && !isUserset {
 			// more common
 			if typesys.TTUCanFastPathWeight2(objectType, relation, userType, rewrite.GetTupleToUserset()) {
 				resolver = c.checkTTUFastPathV2
@@ -1504,4 +1505,12 @@ func (c *LocalChecker) checkRewrite(
 			return nil, ErrUnknownSetOperator
 		}
 	}
+}
+
+func (c *LocalChecker) shouldOptimize(ctx context.Context) bool {
+	optimizationsEnabled := c.optimizationsEnabled
+	if optimizationsOverride := graph.OptimizationsEnabledFromContext(ctx); optimizationsOverride != nil {
+		optimizationsEnabled = *optimizationsOverride
+	}
+	return optimizationsEnabled
 }
